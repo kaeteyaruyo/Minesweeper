@@ -1,0 +1,265 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset='utf8'>
+        <title>Minesweeper</title>
+        <style>
+            body {
+                display: grid;
+                justify-content: center;
+                align-content: center;
+                width: 100vw;
+                height: 100vh;
+                margin: 0;
+                padding: 0;
+            }
+
+            .main {
+                width: fit-content;
+                height: fit-content;
+                background-color: #AAA;
+                border: 1px solid #555;
+            }
+
+            .main__toolbar {
+                display: grid;
+                grid-template-columns: min-content auto;
+                padding: 5px 10px;
+                border: 1px solid #555;
+            }
+
+            .main__toolbar--status {
+                display: flex;
+                flex-direction: row;
+                justify-content: space-between;
+                margin-left: 10px;
+            }
+
+            .main__map {
+                display: grid;
+            }
+
+            .main__map--block {
+                display: grid;
+                justify-content: center;
+                align-content: center;
+                width: 40px;
+                height: 40px;
+                border: 1px solid #555;
+                user-select: none;
+            }
+
+            .block__close {
+                background-image: linear-gradient(to bottom right, #DDD, #AAA);
+            }
+
+            .block__close:active {
+                background-image: linear-gradient(to bottom right, #EEE, #BBB);
+            }
+
+            .block__open {
+                background-color: #EEE;
+            }
+        </style>
+    </head>
+    <body>
+        <div class='main'>
+            <div class='main__toolbar'>
+                <select>
+                    <option value='easy'>簡單</option>
+                    <option value='medium'>中等</option>
+                    <option value='hard'>困難</option>
+                </select>
+                <div class='main__toolbar--status'>
+                    <div>
+                        <span>旗子</span>
+                        <span id='flagText'>0</span>
+                    </div>
+                    <button onclick='restart()'>
+                        新遊戲
+                    </button>
+                    <div>
+                        <span>時間</span>
+                        <span id='time'>0</span>
+                    </div>
+                </div>
+            </div>
+            <div class='main__map'>
+            </div>
+        </div>
+        <script>
+            const flagText = document.querySelector('#flagText');
+            const time = document.querySelector('#time');
+            const map = document.querySelector('.main__map');
+            const bombMap = [];
+            const bombCountMap = [];
+            const flagMap = [];
+            const isOpenMap = [];
+            let width = 8;
+            let height = 8;
+            let bomb = 10;
+            let flagCount = 0;
+            let timer = 0;
+            let isFreezed = false;
+
+            createMap(width, height, bomb);
+
+            document.querySelector('select').addEventListener('change', function(){
+                if(this.value === 'easy'){
+                    width = 8;
+                    height = 8;
+                    bomb = 10;
+                }
+                else if(this.value === 'medium'){
+                    width = 16;
+                    height = 16;
+                    bomb = 40;
+                }
+                else if(this.value === 'hard'){
+                    width = 30;
+                    height = 16;
+                    bomb = 99;
+                }
+                restart();
+            });
+
+            function createMap(){
+                isFreezed = false
+                flagCount = bomb;
+                flagText.innerHTML = flagCount;
+                map.innerHTML = '';
+                map.style.width = 5 * width;
+                map.style.height = 5 * height;
+                map.style['grid-template-rows'] = `repeat(${ height }, 1fr)`;
+                map.style['grid-template-columns'] = `repeat(${ width }, 1fr)`;
+                for(let i = 0; i < height; ++i){
+                    bombMap[i] = [];
+                    bombCountMap[i] = [];
+                    flagMap[i] = [];
+                    isOpenMap[i] = [];
+                    for(let j = 0; j < width; ++j){
+                        bombMap[i][j] = false;
+                        bombCountMap[i][j] = 0;
+                        flagMap[i][j] = false;
+                        isOpenMap[i][j] = false;
+
+                        const block = document.createElement('div');
+                        block.classList.add('main__map--block');
+                        block.classList.add('block__close');
+                        block.id = `${ i }_${ j }`;
+                        block.addEventListener('click', openBlock);
+                        block.addEventListener('contextmenu', putFlag);
+                        map.appendChild(block);
+                    }
+                }
+            }
+
+            function openBlock(){
+                let [row, col] = this.id.split('_');
+                if(isFreezed || isOpenMap[row][col] || flagMap[row][col]) return;
+                if(!timer){
+                    let r, c;
+                    bombMap[row][col] = true;
+                    for(let i = 0; i < bomb; ++i){
+                        do{
+                            r = Math.floor(Math.random() * height);
+                            c = Math.floor(Math.random() * width);
+                        } while(bombMap[r][c]);
+                        bombMap[r][c] = true;
+                        addBombCount(r, c);
+                    }
+                    bombMap[row][col] = false;
+
+                    timer = setInterval(() => {
+                        time.innerHTML = Number.parseInt(time.innerHTML) + 1;
+                    }, 1000);
+                }
+                if(bombMap[row][col]){
+                    gameover();
+                }
+                else{
+                    openChunk(Number.parseInt(row), Number.parseInt(col));
+                    checkWin();
+                }
+            }
+
+            function openChunk(row, col){
+                if(isOpenMap[row][col]) return;
+                isOpenMap[row][col] = true;
+                const block = document.getElementById(`${ row }_${ col }`);
+                block.classList.remove('block__close');
+                block.classList.add('block__open');
+                if(bombCountMap[row][col] > 0){
+                    block.innerHTML = bombCountMap[row][col];
+                    return;
+                }
+                else {
+                    for(let i = -1; i <=1 ; ++i){
+                        for(let j = -1; j <=1 ; ++j){
+                            let r = row + i, c = col + j;
+                            if(r >= 0 && r < height && c >= 0 && c < width && !flagMap[r][c]){
+                                openChunk(r, c);
+                            }
+                        }
+                    }
+                }
+            }
+
+            function addBombCount(row, col){
+                for(let i = -1; i <= 1; ++i){
+                    for(let j = -1; j <= 1; ++j){
+                        let r = row + i, c = col + j;
+                        if(r >= 0 && r < height && c >= 0 && c < width){
+                            ++bombCountMap[r][c];
+                        }
+                    }
+                }
+            }
+
+            function putFlag(e){
+                e.preventDefault();
+                let [row, col] = this.id.split('_');
+                if(isFreezed || isOpenMap[row][col]) return;
+                flagMap[row][col] = !flagMap[row][col];
+                flagCount += (flagMap[row][col] ? -1 : 1);
+                this.innerHTML = flagMap[row][col] ? '旗' : '';
+                flagText.innerHTML = flagCount;
+            }
+
+            function checkWin(){
+                for(let i = 0; i < height; ++i){
+                    for(let j = 0; j < width; ++j){
+                        if(isOpenMap[i][j] === bombMap[i][j]) return;
+                    }
+                }
+                clearInterval(timer);
+                timer = null;
+                isFreezed = true;
+                setTimeout(() => { alert('你贏了！')}, 100);
+            }
+
+            function gameover(){
+                for(let i = 0; i < height; ++i){
+                    for(let j = 0; j < width; ++j){
+                        if(bombMap[i][j]){
+                            const block = document.getElementById(`${ i }_${ j }`);
+                            block.classList.remove('block__close');
+                            block.classList.add('block__open');
+                            block.innerHTML = '爆';
+                        }
+                    }
+                }
+                clearInterval(timer);
+                timer = null;
+                isFreezed = true;
+            }
+
+            function restart(){
+                clearInterval(timer);
+                timer = null;
+                time.innerHTML = 0;
+                createMap(width, height, bomb);
+            }
+        </script>
+    </body>
+</html>
